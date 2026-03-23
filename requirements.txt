@@ -1,0 +1,2 @@
+# The web planner is static HTML only — no Python packages required.
+# Use the .xlsx in Excel if you need spreadsheet-native tooling.

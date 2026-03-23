@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Capacity Planning worksheet</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Calibri, "Segoe UI", Arial, sans-serif;
+      font-size: 13px;
+      background: #f5f5f7;
+      color: #1a1a1a;
+    }
+    .bar {
+      background: #fff;
+      border-bottom: 1px solid #b4b4b4;
+      padding: 8px 12px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+    .bar h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      font-weight: 600;
+      line-height: 1.25;
+    }
+    nav.tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px;
+      padding: 6px 10px;
+      background: #e1e1e1;
+      border-bottom: 1px solid #b4b4b4;
+      position: sticky;
+      top: 44px;
+      z-index: 19;
+    }
+    nav.tabs button {
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 7px 14px;
+      border: 1px solid #b4b4b4;
+      background: #d8d8d8;
+      cursor: pointer;
+      border-radius: 3px 3px 0 0;
+    }
+    nav.tabs button.on {
+      background: #217346;
+      color: #fff;
+      border-color: #1a5c38;
+    }
+    main { padding: 8px; max-width: 56rem; margin: 0 auto; }
+    section.panel { display: none; }
+    section.panel.visible { display: block; }
+    .sheet-wrap {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+      overflow: auto;
+      max-height: calc(100vh - 108px);
+    }
+    table.sheet {
+      border-collapse: collapse;
+      table-layout: fixed;
+      min-width: 36rem;
+      width: 100%;
+    }
+    table.sheet th, table.sheet td {
+      border: none;
+      padding: 4px 5px;
+      vertical-align: middle;
+      line-height: 1.35;
+    }
+    table.sheet .a, table.sheet .sec {
+      background: transparent;
+      font-weight: 700;
+      text-align: left;
+      padding-top: 1rem;
+      padding-bottom: 0.35rem;
+      border-bottom: 1px solid #e0e0e5;
+    }
+    table.sheet tr:first-child .sec {
+      padding-top: 0.5rem;
+    }
+    table.sheet .sec { font-size: 0.95rem; }
+    table.sheet .b { text-align: left; }
+    table.sheet .c { text-align: left; color: #333; }
+    table.sheet .lbl {
+      text-align: left;
+      color: #333;
+    }
+    #tbl-provider .lbl.ind { padding-left: 0.65rem; }
+    #tbl-provider .lbl.note { font-size: 12px; color: #444; }
+    table.sheet .d { text-align: right; font-variant-numeric: tabular-nums; }
+    table.sheet .e { text-align: left; color: #5c5c66; font-size: 12px; }
+    table.sheet .f, table.sheet .g, table.sheet .h {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    table.sheet .g-head, table.sheet .h-head {
+      text-align: center;
+      background: transparent;
+      font-weight: 600;
+      color: #444;
+      font-size: 12px;
+    }
+    table.sheet input.in {
+      width: 100%;
+      max-width: 96px;
+      box-sizing: border-box;
+      border: 1px solid #c5d9c8;
+      border-radius: 4px;
+      background: #e8f5e9;
+      font: inherit;
+      text-align: right;
+      padding: 4px 6px;
+    }
+    table.sheet input.in:focus {
+      outline: none;
+      border-color: #217346;
+      box-shadow: 0 0 0 2px rgba(33, 115, 70, 0.2);
+    }
+    table.sheet .out { background: transparent; }
+    table.sheet .blank { background: transparent; }
+    .cost-vm { font-weight: 600; color: #333; }
+  </style>
+</head>
+<body>
+  <div class="bar"><h1>Capacity Planning worksheet</h1></div>
+  <nav class="tabs" aria-label="Workbook sheets">
+    <button type="button" class="on" data-panel="provider">Capacity Provider</button>
+    <button type="button" data-panel="demand">Capacity Consumer</button>
+    <button type="button" data-panel="cost">Cost Comparison</button>
+  </nav>
+  <main>
+    <section id="panel-provider" class="panel visible">
+      <div class="sheet-wrap">
+        <table class="sheet" id="tbl-provider" aria-label="Capacity Provider"></table>
+      </div>
+    </section>
+    <section id="panel-demand" class="panel">
+      <div class="sheet-wrap">
+        <table class="sheet" id="tbl-consumer" aria-label="Capacity Consumer"></table>
+      </div>
+    </section>
+    <section id="panel-cost" class="panel">
+      <div class="sheet-wrap">
+        <div id="tbl-cost"></div>
+      </div>
+    </section>
+  </main>
+  <script>
+(function () {
+  const defaults = {
+    cpuSpeedGhz: 2.5,
+    cores: 64,
+    allCoreTurbo: 1.25,
+    ramGb: 768,
+    clusterSize: 10,
+    hvCpuThreads: 12,
+    hvMemGb: 64,
+    overcommitCpu: 2,
+    systemReservationGhz: 8,
+    gbPerVcpu: 4,
+    bronzeVcpu: 4,
+    resCpuGold: 0.6,
+    resCpuSilver: 0.3,
+    resCpuBronze: 0.15,
+    utilTogetherCpu: 0.5,
+    resMemGold: 1,
+    resMemSilver: 0.5,
+    resMemBronze: 0.25,
+    utilTogetherMem: 0.85,
+    priceCpuYear: 171,
+    priceRamYear: 43,
+    privatePerEsxi: 165000,
+    scenarioA: { gold: 6, silver: 1, bronze: 3 },
+    scenarioB: { gold: 2, silver: 13, bronze: 8 },
+    scenarioC: { gold: 1, silver: 6, bronze: 27 },
+  };
+
+  const state = JSON.parse(JSON.stringify(defaults));
+
+  function num(el) {
+    if (!el) return 0;
+    const v = parseFloat(el.value);
+    return Number.isFinite(v) ? v : 0;
+  }
+
+
+  function readStateFromDom() {
+    const q = (k) => num(document.querySelector(`[data-key="${k}"]`));
+    Object.assign(state, {
+      cpuSpeedGhz: q("cpuSpeedGhz"),
+      cores: q("cores"),
+      allCoreTurbo: q("allCoreTurbo"),
+      ramGb: q("ramGb"),
+      clusterSize: Math.max(1, q("clusterSize")),
+      hvCpuThreads: q("hvCpuThreads"),
+      hvMemGb: q("hvMemGb"),
+      overcommitCpu: q("overcommitCpu"),
+      systemReservationGhz: q("systemReservationGhz"),
+      gbPerVcpu: q("gbPerVcpu"),
+      bronzeVcpu: Math.max(1, q("bronzeVcpu")),
+      resCpuGold: q("resCpuGold"),
+      resCpuSilver: q("resCpuSilver"),
+      resCpuBronze: q("resCpuBronze"),
+      utilTogetherCpu: q("utilTogetherCpu"),
+      resMemGold: q("resMemGold"),
+      resMemSilver: q("resMemSilver"),
+      resMemBronze: q("resMemBronze"),
+      utilTogetherMem: q("utilTogetherMem"),
+      priceCpuYear: q("priceCpuYear"),
+      priceRamYear: q("priceRamYear"),
+      privatePerEsxi: q("privatePerEsxi"),
+    });
+    document.querySelectorAll("input[data-sc]").forEach((inp) => {
+      const sc = inp.dataset.sc;
+      const field = inp.dataset.field;
+      if (state[sc]) state[sc][field] = Math.max(0, parseInt(inp.value, 10) || 0);
+    });
+  }
+
+  function vmShape() {
+    const vb = state.bronzeVcpu;
+    const vs = vb * 2;
+    const vg = vs * 2;
+    const g = state.gbPerVcpu;
+    return {
+      gold: { vcpu: vg, ram: vg * g },
+      silver: { vcpu: vs, ram: vs * g },
+      bronze: { vcpu: vb, ram: vb * g },
+    };
+  }
+
+  function computeProvider() {
+    const hz = state.cpuSpeedGhz;
+    const cores = state.cores;
+    const threads = cores * 2;
+    const nvmeHalf = state.ramGb / 2;
+    const ha = 1 / state.clusterSize;
+    const usableCpu = (threads - state.hvCpuThreads) * (1 - ha);
+    const cpuAlloc = usableCpu * state.overcommitCpu;
+    const usableRam = (state.ramGb - state.hvMemGb) * (1 - ha);
+    const cpuRamRatio = usableCpu > 0 ? usableRam / usableCpu : 0;
+    const totalCycles = hz * cores * 1.25 * state.allCoreTurbo;
+    const hvThreadsCycles = hz * state.hvCpuThreads;
+    const overheadPct = totalCycles > 0 ? hvThreadsCycles / totalCycles : 0;
+    const usableCycles = totalCycles - hvThreadsCycles;
+    const maxReservation = hz * cores - state.systemReservationGhz;
+
+    const d49 = 0.5, e49 = 1, f49 = 1.5;
+    const d51 = 1, e51 = 1.5, f51 = 2;
+    const memBase = usableRam;
+    const tier = {
+      gold: { vcpu: cpuAlloc * d49, ram: memBase * d51 },
+      silver: { vcpu: cpuAlloc * e49, ram: memBase * e51 },
+      bronze: { vcpu: cpuAlloc * f49, ram: memBase * f51 },
+    };
+    const memTiering = usableRam + nvmeHalf;
+
+    return {
+      threads,
+      nvmeHalf,
+      ha,
+      clusterHaPct: ha,
+      usableCpu,
+      cpuAlloc,
+      usableRam,
+      cpuRamRatio,
+      totalCycles,
+      hvThreadsCycles,
+      overheadPct,
+      usableCycles,
+      maxReservation,
+      tier,
+      memTiering,
+      d49,
+      e49,
+      f49,
+      d51,
+      e51,
+      f51,
+    };
+  }
+
+  /** H56:H59 / E7 per Capacity Consumer sheet */
+  function scenarioCpuWeighted(nG, nS, nB, shape, p) {
+    const g56 = 1 / p.d49;
+    const h56 = nG * shape.gold.vcpu * g56;
+    const h57 = nS * shape.silver.vcpu;
+    const h58 = nB * shape.bronze.vcpu;
+    const h59 = h56 + h57 + h58;
+    const e7 = p.tier.bronze.vcpu;
+    const h60 = e7 > 0 ? h59 / e7 : 0;
+    return { g56, h56, h57, h58, h59, h60, e7 };
+  }
+
+  function roundDownThousands(x) {
+    return Math.floor(x / 1000) * 1000;
+  }
+
+  function costBlock(sc) {
+    const sh = vmShape();
+    const cpuP = state.priceCpuYear;
+    const ramP = state.priceRamYear;
+    const rows = ["gold", "silver", "bronze"].map((k) => {
+      const n = sc[k] || 0;
+      const v = sh[k].vcpu;
+      const r = sh[k].ram;
+      return { k, n, v, r, cost: n * (v * cpuP + r * ramP) };
+    });
+    const total = rows.reduce((a, x) => a + x.cost, 0);
+    const five = total * 5;
+    const savings = roundDownThousands(five - state.privatePerEsxi);
+    return { rows, total, five, savings };
+  }
+
+  /** Rounded for display; never more than 2 decimal places (0–2 per d). */
+  function fmt(x, d) {
+    if (!Number.isFinite(x)) return "";
+    const places = d === undefined ? 2 : Math.min(Math.max(0, Math.floor(d)), 2);
+    const r = Number(x.toFixed(places));
+    return String(r);
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  function inCell(key, step) {
+    return `<input type="number" class="in" data-key="${key}" step="${step || "any"}" />`;
+  }
+
+  function renderProvider(p) {
+    const sh = vmShape();
+    const rows = [];
+    const R = (_n, cells) => rows.push(`<tr>${cells}</tr>`);
+
+    R(1, `<td class="sec" colspan="6">Total Capacity</td>`);
+    R(2, `<td class="b" colspan="6">Capacity begin with ESXi. Choose a CPU and Memory size that is balanced to avoid wastage</td>`);
+    R(3, `<td class="lbl" colspan="2">CPU Speed</td><td class="d">${inCell("cpuSpeedGhz", "0.1")}</td><td class="e" colspan="3">Replace with the actual speed of your hardware</td>`);
+    R(4, `<td class="lbl" colspan="2">Core</td><td class="d">${inCell("cores", "1")}</td><td class="e" colspan="3">cores</td>`);
+    R(5, `<td class="lbl" colspan="2">Thread</td><td class="d out">${fmt(p.threads, 0)}</td><td class="e" colspan="3">threads</td>`);
+    R(6, `<td class="lbl" colspan="2">All Core Turbo</td><td class="d">${inCell("allCoreTurbo", "0.01")}</td><td class="e" colspan="3">of base frequency. Replace with the actual speed of the CPU</td>`);
+    R(7, `<td class="lbl ind" colspan="2"></td><td class="d blank"></td><td class="e" colspan="3">This is the actual speed the VM gets when all cores are running</td>`);
+    R(8, `<td class="lbl" colspan="2">RAM</td><td class="d">${inCell("ramGb", "1")}</td><td class="e" colspan="3">GB RAM</td>`);
+    R(9, `<td class="lbl" colspan="2">NVMe</td><td class="d out">${fmt(p.nvmeHalf, 2)}</td><td class="e" colspan="3">GB RAM. I'm using 50%</td>`);
+    R(11, `<td class="sec" colspan="6">Usable Capacity</td>`);
+    R(12, `<td class="b" colspan="6">We need to calculate the Usable Capacity as Capacity must be based on amount available to VM</td>`);
+    R(13, `<td class="lbl" colspan="2">Cluster HA</td><td class="d blank"></td><td class="e" colspan="3"></td>`);
+    R(14, `<td class="lbl ind" colspan="2">Cluster size</td><td class="d">${inCell("clusterSize", "1")}</td><td class="e" colspan="3">ESXi hosts. 9 + 1 HA</td>`);
+    R(15, `<td class="lbl ind" colspan="2">Cluster HA</td><td class="d out">${fmt(p.clusterHaPct, 4)}</td><td class="e" colspan="3">1 of 10 hosts is for availability, hence 10% buffer</td>`);
+    R(16, `<td class="lbl" colspan="2">CPU: Utilization Model</td><td class="d blank"></td><td class="e" colspan="3"></td>`);
+    R(17, `<td class="lbl ind" colspan="2">Hypervisor Overhead</td><td class="d">${inCell("hvCpuThreads", "1")}</td><td class="e" colspan="3">threads for ESXi + vSAN + NSX. NSX EDP adds 2-4 cores. vSAN File Services needs 2 vCPU as it's a VM</td>`);
+    R(18, `<td class="lbl ind" colspan="2"></td><td class="d blank"></td><td class="e" colspan="3">If you run vSAN dedupe, compress, and heavy network services, increase to 14</td>`);
+    R(19, `<td class="lbl ind" colspan="2">Usable Capacity</td><td class="d out">${fmt(p.usableCpu, 2)}</td><td class="e" colspan="3">threads available for VM. This is the amount we can overcommit</td>`);
+    R(20, `<td class="lbl" colspan="2">CPU: Allocation Model</td><td class="d blank"></td><td class="e" colspan="3"></td>`);
+    R(21, `<td class="lbl note" colspan="6">Overcommit Ratio is measured against Usable Capacity, not Total</td>`);
+    R(22, `<td class="lbl ind" colspan="2">Default Overcommit Ratio</td><td class="d">${inCell("overcommitCpu", "0.1")}</td><td class="e" colspan="3">vCPU per thread. Do not do over core as HT can be disabled</td>`);
+    R(23, `<td class="lbl ind" colspan="2"></td><td class="d blank"></td><td class="e" colspan="3">2 vCPU is chosen per thread as most of the time VM run well below 50%</td>`);
+    R(24, `<td class="lbl ind" colspan="2">Usable Capacity</td><td class="d out">${fmt(p.cpuAlloc, 2)}</td><td class="e" colspan="3">vCPU</td>`);
+    R(25, `<td class="lbl" colspan="2">Memory</td><td class="d blank"></td><td class="e" colspan="3"></td>`);
+    R(26, `<td class="lbl note" colspan="6">Unlike CPU, memory has the same Usable Capacity number for all 3 models</td>`);
+    R(27, `<td class="lbl ind" colspan="2">Hypervisor Overhead</td><td class="d">${inCell("hvMemGb", "1")}</td><td class="e" colspan="3">See CPU for explanation. Adjust accordingly</td>`);
+    R(28, `<td class="lbl ind" colspan="2">Usable Capacity</td><td class="d out">${fmt(p.usableRam, 2)}</td><td class="e" colspan="3">vRAM available for VM. Memory Tiering is not yet included because Gold has no overcommit</td>`);
+    R(30, `<td class="lbl" colspan="2">ESXi CPU : RAM ratio</td><td class="d out">${fmt(p.cpuRamRatio, 12)}</td><td class="e" colspan="3">This means we can go memory heavy. If your workload is CPU heavy, buy less RAM</td>`);
+    R(31, `<td class="lbl note" colspan="6">Because it's higher than the 4:1 ratio of the VM configuration, we should lower the CPU Reservation to maximise consumption</td>`);
+    R(33, `<td class="sec" colspan="6">Throughput Consideration</td>`);
+    R(34, `<td class="b" colspan="6">When a core is running, its actual speed varies over time.</td>`);
+    R(35, `<td class="b" colspan="6">The speed impacts the throughput. A slow down is speed is not the same as VM facing CPU ready or co-stop</td>`);
+    R(36, `<td class="lbl" colspan="2">CPU Cycles</td><td class="d blank"></td><td class="e" colspan="3"></td>`);
+    R(37, `<td class="lbl ind" colspan="2">Total CPU Cycles</td><td class="d out">${fmt(p.totalCycles, 2)}</td><td class="e" colspan="3">HT gives 1.25x CPU cycles, not 2.x</td>`);
+    R(38, `<td class="lbl ind" colspan="2"></td><td class="d blank"></td><td class="e" colspan="3">This is what you get when all cores run. To be conservative, we're not using this number in the capacity</td>`);
+    R(39, `<td class="lbl ind" colspan="2">Hypervisor Overhead</td><td class="d out">${fmt(p.hvThreadsCycles, 2)}</td><td class="e" colspan="3">threads for ESXi + vSAN + NSX</td>`);
+    R(40, `<td class="lbl ind" colspan="2">Overhead in %</td><td class="d out">${fmt(p.overheadPct, 4)}</td><td class="e" colspan="3">This is higher as HT does not give 2x</td>`);
+    R(41, `<td class="lbl ind" colspan="2">Usable CPU Cycles</td><td class="d out">${fmt(p.usableCycles, 2)}</td><td class="e" colspan="3">To be conservative, we're not using this number in the capacity</td>`);
+    R(42, `<td class="lbl" colspan="2">Reservation</td><td class="d blank"></td><td class="e" colspan="3"></td>`);
+    R(43, `<td class="lbl ind" colspan="2">System Reservation</td><td class="d">${inCell("systemReservationGhz", "0.5")}</td><td class="e" colspan="3">Typically this is around 8 GHz</td>`);
+    R(44, `<td class="lbl ind" colspan="2">Max CPU Reservation</td><td class="d out">${fmt(p.maxReservation, 2)}</td><td class="e" colspan="3">Take note that vSphere reservation is capped using base nominal clock speed</td>`);
+    R(46, `<td class="sec" colspan="6">Class of Service</td>`);
+    R(47, `<td class="b" colspan="6">Silver is the default setting</td>`);
+    R(
+      48,
+      `<td class="lbl ind" colspan="2"></td><td class="d g-head">Gold</td><td class="f g-head">Silver</td><td class="g g-head">Bronze</td><td class="h"></td>`
+    );
+    R(
+      49,
+      `<td class="lbl" colspan="2">CPU Overcommit Ratio</td><td class="d out">${fmt(p.d49, 2)}</td><td class="f out">${fmt(p.e49, 2)}</td><td class="g out">${fmt(p.f49, 2)}</td><td class="h"></td>`
+    );
+    R(
+      50,
+      `<td class="lbl" colspan="2">vCPU Available for VM</td><td class="d out">${fmt(p.tier.gold.vcpu, 2)}</td><td class="f out">${fmt(p.tier.silver.vcpu, 2)}</td><td class="g out">${fmt(p.tier.bronze.vcpu, 2)}</td><td class="h"></td>`
+    );
+    R(
+      51,
+      `<td class="lbl" colspan="2">Memory Overcommit Ratio (against DRAM)</td><td class="d out">${fmt(p.d51, 2)}</td><td class="f out">${fmt(p.e51, 2)}</td><td class="g out">${fmt(p.f51, 2)}</td><td class="h"></td>`
+    );
+    R(
+      52,
+      `<td class="lbl" colspan="2">Memory Available for VM (without Tiering)</td><td class="d out">${fmt(p.tier.gold.ram, 2)}</td><td class="f out">${fmt(p.tier.silver.ram, 2)}</td><td class="g out">${fmt(p.tier.bronze.ram, 2)}</td><td class="h"></td>`
+    );
+    R(
+      53,
+      `<td class="lbl" colspan="2">Memory Available for VM (with Tiering)</td><td class="d out">${fmt(p.memTiering, 2)}</td><td class="f"></td><td class="g"></td><td class="h"></td>`
+    );
+    R(
+      54,
+      `<td class="b" colspan="6">Memory Tiering enable higher overcommit, hence we use 1 number for all classes</td>`
+    );
+
+    const provCg = `<colgroup>
+      <col style="width: 19%" />
+      <col style="width: 19%" />
+      <col style="width: 5.25rem" />
+      <col />
+      <col />
+      <col />
+    </colgroup>`;
+    document.getElementById("tbl-provider").innerHTML = provCg + rows.join("");
+    Object.keys(defaults).forEach((k) => {
+      const el = document.querySelector(`#tbl-provider [data-key="${k}"]`);
+      if (el && typeof state[k] === "number") el.value = state[k];
+    });
+  }
+
+  function renderConsumer(p) {
+    const sh = vmShape();
+    const c7 = p.tier.gold.vcpu,
+      d7 = p.tier.silver.vcpu,
+      e7 = p.tier.bronze.vcpu;
+    const c8 = p.tier.gold.ram,
+      d8m = p.tier.silver.ram,
+      e8 = p.tier.bronze.ram;
+    const c9 = p.memTiering;
+
+    const rows = [];
+    const R = (_n, cells) => rows.push(`<tr>${cells}</tr>`);
+
+    R(2, `<td class="sec" colspan="8">Summary of ESXi Usable Capacity</td>`);
+    R(3, `<td class="b" colspan="8">Memory uses memory tiering for non Gold. To be conservative, we only apply for allocation, not reservation</td>`);
+    R(5, `<td class="b" style="width:0;max-width:10px;padding:2px 4px"></td><td class="c g-head">Gold</td><td class="d g-head">Silver</td><td class="e g-head">Bronze</td><td colspan="4"></td>`);
+    R(6, `<td class="b">Allocation Model</td><td colspan="7"></td>`);
+    R(
+      7,
+      `<td class="b">CPU Usable Capacity</td><td class="c out">${fmt(c7, 2)}</td><td class="d out">${fmt(d7, 2)}</td><td class="e out">${fmt(e7, 2)}</td><td colspan="4"></td>`
+    );
+    R(
+      8,
+      `<td class="b">Memory Usable Capacity</td><td class="c out">${fmt(c8, 2)}</td><td class="d out">${fmt(d8m, 2)}</td><td class="e out">${fmt(e8, 2)}</td><td colspan="4"></td>`
+    );
+    R(9, `<td class="b">Memory Usable with Tiering</td><td class="c out">${fmt(c9, 2)}</td><td colspan="6"></td>`);
+    R(10, `<td class="b">Reservation Model</td><td colspan="7"></td>`);
+    R(11, `<td class="b">Usable Capacity (not visible)</td><td class="c out">${fmt(p.usableCycles, 2)}</td><td colspan="6"></td>`);
+    R(12, `<td class="b">CPU Reservable Capacity</td><td class="c out">${fmt(p.maxReservation, 2)}</td><td colspan="6"></td>`);
+    R(13, `<td class="b">Memory Reservable Capacity</td><td class="c out">${fmt(p.usableRam, 2)}</td><td colspan="6"></td>`);
+    R(14, `<td class="b">Memory Reservable with Tiering</td><td class="c out">${fmt(c9, 2)}</td><td colspan="6"></td>`);
+    R(15, `<td class="b" colspan="8">Reservation is computed in MHz, hence we need to follow</td>`);
+    R(17, `<td class="sec" colspan="8">Average VM Size</td>`);
+    R(18, `<td class="b" colspan="8">As this is just at the planning stage, it's better to use 1 size for each class.</td>`);
+    R(19, `<td class="b" colspan="8">We keep the ratio between Gold, Silver and Bronze consistent.</td>`);
+    R(
+      20,
+      `<td class="b">GB RAM per vCPU</td><td class="c">${inCell("gbPerVcpu", "0.5")}</td><td class="d">GB</td><td colspan="5"></td>`
+    );
+    R(22, `<td class="b">Typical VM Size</td><td class="c g-head">Gold</td><td class="d g-head">Silver</td><td class="e g-head">Bronze</td><td colspan="4"></td>`);
+    R(
+      23,
+      `<td class="b">Configured CPU </td><td class="c out">${fmt(sh.gold.vcpu, 0)}</td><td class="d out">${fmt(sh.silver.vcpu, 0)}</td><td class="e">${inCell("bronzeVcpu", "1")}</td><td colspan="4"></td>`
+    );
+    R(
+      24,
+      `<td class="b">     Reserved percentage</td><td class="c">${inCell("resCpuGold", "0.01")}</td><td class="d">${inCell("resCpuSilver", "0.01")}</td><td class="e">${inCell("resCpuBronze", "0.01")}</td><td colspan="4"></td>`
+    );
+    R(
+      25,
+      `<td class="b">Expected Utilization "Together"</td><td class="c">${inCell("utilTogetherCpu", "0.01")}</td><td class="d out">${fmt(state.utilTogetherCpu, 2)}</td><td class="e out">${fmt(state.utilTogetherCpu, 2)}</td><td colspan="4"></td>`
+    );
+    R(
+      26,
+      `<td class="b">Configured Memory </td><td class="c out">${fmt(sh.gold.ram, 2)}</td><td class="d out">${fmt(sh.silver.ram, 2)}</td><td class="e out">${fmt(sh.bronze.ram, 2)}</td><td colspan="4"></td>`
+    );
+    R(
+      27,
+      `<td class="b">     Reserved percentage</td><td class="c">${inCell("resMemGold", "0.01")}</td><td class="d">${inCell("resMemSilver", "0.01")}</td><td class="e">${inCell("resMemBronze", "0.01")}</td><td colspan="4"></td>`
+    );
+    R(
+      28,
+      `<td class="b">Expected Utilization "Together"</td><td class="c">${inCell("utilTogetherMem", "0.01")}</td><td class="d out">${fmt(state.utilTogetherMem, 2)}</td><td class="e out">${fmt(state.utilTogetherMem, 2)}</td><td colspan="4"></td>`
+    );
+    R(29, `<td class="b" colspan="8">The ratio among the class of services matches the overcommit ratio. This makes it appear fair, which ease acceptance</td>`);
+    R(30, `<td class="b" colspan="8">Reservation is set high as that's customers expectation</td>`);
+    R(31, `<td class="b" colspan="8">CPU is set lower than memory as there is relatively less capacity available in this specific ESXi hardware spec.</td>`);
+    R(32, `<td class="b" colspan="8">Reservation impacts DRS and Resource Pools as it makes the "chunk" bigger. While it's necessary in a spreadsheet, avoid using in actual production.</td>`);
+    R(34, `<td class="sec" colspan="8">Existing Data</td>`);
+    R(
+      35,
+      `<td class="b">CPU Speed</td><td class="c out">${fmt(state.cpuSpeedGhz, 2)}</td><td class="d">GHz</td><td colspan="5"></td>`
+    );
+    R(36, `<td class="b">Total Thread</td><td class="c out">${fmt(p.threads, 0)}</td><td colspan="6"></td>`);
+    R(37, `<td class="b" colspan="8">To keep MS Excel formula readable, we copy the data on this sheet from the ESXi sheet</td>`);
+    R(39, `<td class="sec" colspan="8">How many VM can we fit?</td>`);
+    R(40, `<td class="b" colspan="8">Because the ESXi runs mixed classes, which Usable Capacity do we use?</td>`);
+    R(41, `<td class="b" colspan="8">We use Bronze, but we multiply the weight of Gold by 4x and Silver by 2x</td>`);
+    R(42, `<td class="b" colspan="8">This matches the Price/Performance so it's fair to tenants</td>`);
+    R(43, `<td class="b" colspan="8">How many VMs can be placed depends on the class of service. The following tables show 3 common scenarios</td>`);
+    R(44, `<td class="b" colspan="8">Aim for around 90% - 110%</td>`);
+    R(45, `<td class="b" colspan="8">The "Overall Planned Consumption" rows have been color coded for ease of checking</td>`);
+    R(46, `<td class="b" colspan="8">The reason why it's not exact (e.g. 99%) is you're at planning stage.</td>`);
+    R(47, `<td class="b" colspan="8">Demand depends on the max of VM (utilization, reservation), which we don't know as it depends on each VM</td>`);
+    R(48, `<td class="b" colspan="8">Supply has Turbo Boost, which is not yet included</td>`);
+    R(49, `<td class="b" colspan="8">In a running environment, measure contention explicitly</td>`);
+    R(50, `<td class="b" colspan="8">Aim to meet the promised Performance SLA (lagging indicator) by measuring KPI (leading indicator)</td>`);
+
+    function scenarioBlock(startTitleRow, tableHeaderRow, scKey, sc) {
+      const cpu = scenarioCpuWeighted(sc.gold, sc.silver, sc.bronze, sh, p);
+      const nG = sc.gold,
+        nS = sc.silver,
+        nB = sc.bronze;
+      const d56 = nG * sh.gold.vcpu,
+        e56 = nG * sh.gold.ram;
+      const d57 = nS * sh.silver.vcpu,
+        e57 = nS * sh.silver.ram;
+      const d58 = nB * sh.bronze.vcpu,
+        e58 = nB * sh.bronze.ram;
+      const d59 = d56 + d57 + d58,
+        e59 = e56 + e57 + e58;
+      const title =
+        startTitleRow === 53
+          ? "Planning Scenario: Mostly Gold VMs"
+          : startTitleRow === 63
+            ? "Planning Scenario: Mostly Silver VMs"
+            : "Planning Scenario: Mostly Bronze VMs";
+
+      R(startTitleRow, `<td class="sec" colspan="8">${esc(title)}</td>`);
+      R(
+        tableHeaderRow,
+        `<td class="b">Class of Service</td><td class="c g-head">No of VM</td><td class="d g-head">Total vCPU</td><td class="e g-head">Total vRAM</td><td></td><td class="g g-head" colspan="2">Based on Allocation</td><td></td>`
+      );
+      R(
+        tableHeaderRow + 1,
+        `<td colspan="4"></td><td></td><td class="g g-head">CPU Multiplier</td><td class="h g-head">CPU</td><td></td>`
+      );
+      R(
+        tableHeaderRow + 2,
+        `<td class="b">Gold Class VM</td><td class="c"><input type="number" class="in" min="0" step="1" data-sc="${scKey}" data-field="gold" value="${nG}" /></td><td class="d out">${fmt(d56, 0)}</td><td class="e out">${fmt(e56, 2)}</td><td></td><td class="g out">${fmt(cpu.g56, 2)}</td><td class="h out">${fmt(cpu.h56, 2)}</td><td></td>`
+      );
+      R(
+        tableHeaderRow + 3,
+        `<td class="b">Silver Class VM</td><td class="c"><input type="number" class="in" min="0" step="1" data-sc="${scKey}" data-field="silver" value="${nS}" /></td><td class="d out">${fmt(d57, 0)}</td><td class="e out">${fmt(e57, 2)}</td><td></td><td class="g out">${fmt(1, 2)}</td><td class="h out">${fmt(cpu.h57, 2)}</td><td></td>`
+      );
+      const g58 = 1 / p.f49;
+      R(
+        tableHeaderRow + 4,
+        `<td class="b">Bronze Class VM</td><td class="c"><input type="number" class="in" min="0" step="1" data-sc="${scKey}" data-field="bronze" value="${nB}" /></td><td class="d out">${fmt(d58, 0)}</td><td class="e out">${fmt(e58, 2)}</td><td></td><td class="g out">${fmt(g58, 2)}</td><td class="h out">${fmt(cpu.h58, 2)}</td><td></td>`
+      );
+      R(
+        tableHeaderRow + 5,
+        `<td class="b">Total</td><td class="c out">${fmt(nG + nS + nB, 0)}</td><td class="d out">${fmt(d59, 0)}</td><td class="e out">${fmt(e59, 2)}</td><td></td><td class="g"></td><td class="h out">${fmt(cpu.h59, 2)}</td><td></td>`
+      );
+      R(
+        tableHeaderRow + 6,
+        `<td class="lbl" colspan="4">Overall Planned Consumption</td><td></td><td class="g"></td><td class="h out">${fmt(cpu.h60, 2)}</td><td></td>`
+      );
+    }
+
+    scenarioBlock(53, 54, "scenarioA", state.scenarioA);
+    scenarioBlock(63, 64, "scenarioB", state.scenarioB);
+    scenarioBlock(73, 74, "scenarioC", state.scenarioC);
+
+    document.getElementById("tbl-consumer").innerHTML = rows.join("");
+    [
+      "gbPerVcpu",
+      "bronzeVcpu",
+      "resCpuGold",
+      "resCpuSilver",
+      "resCpuBronze",
+      "utilTogetherCpu",
+      "resMemGold",
+      "resMemSilver",
+      "resMemBronze",
+      "utilTogetherMem",
+    ].forEach((k) => {
+      const el = document.querySelector(`#tbl-consumer [data-key="${k}"]`);
+      if (el) el.value = state[k];
+    });
+  }
+
+  function renderCost() {
+    let html = `<table class="sheet" aria-label="Cost Comparison top"><tbody>`;
+    html += `<tr><td class="sec" colspan="5">Public Cloud Cost</td></tr>`;
+    html += `<tr><td class="b" colspan="5">This is based on the average of AWS, Azure and Google GCP</td></tr>`;
+    html += `<tr><td class="b">CPU Price</td><td class="d">${inCell("priceCpuYear", "1")}</td><td class="e" colspan="3">per vCPU per year</td></tr>`;
+    html += `<tr><td class="b">RAM Price</td><td class="d">${inCell("priceRamYear", "1")}</td><td class="e" colspan="3">per GB per year</td></tr>`;
+    html += `<tr><td class="b" colspan="5">Public Cloud does not have Class of Service. Gold VM is treated the same way as Bronze VM. The entire philosophy of public cloud is Cattle, not Pet.</td></tr>`;
+    html += `<tr><td class="b" colspan="5">The cost is likely higher as the above does not include egress network</td></tr>`;
+    html += `<tr><td class="sec" colspan="5">Private Cloud Cost</td></tr>`;
+    html += `<tr><td class="b">Private Cloud total cost</td><td class="d">${inCell("privatePerEsxi", "1000")}</td><td class="e" colspan="3">per ESXi</td></tr>`;
+    html += `<tr><td class="b" colspan="5">The cost needs to include 1 HA host per cluster. This model uses 9+1 hosts per cluster</td></tr>`;
+    html += `</tbody></table>`;
+
+    function scenarioCost(title, startR, sc) {
+      const cb = costBlock(sc);
+      const rows = [];
+      let r = startR;
+      rows.push(`<tr><td class="sec" colspan="6">${esc(title)}</td></tr>`);
+      r++;
+      rows.push(`<tr><td class="b">Class of Service</td><td class="cost-vm">No of VM</td><td class="cost-vm" colspan="2">VM Size</td><td class="cost-vm">Public Cloud Cost</td><td></td></tr>`);
+      r++;
+      rows.push(`<tr><td></td><td></td><td class="cost-vm">vCPU</td><td class="cost-vm">RAM</td><td></td><td></td></tr>`);
+      r++;
+      const labels = ["Gold Class VM", "Silver Class VM", "Bronze Class VM"];
+      const keys = ["gold", "silver", "bronze"];
+      keys.forEach((k, i) => {
+        const x = cb.rows[i];
+        rows.push(
+          `<tr><td class="b">${labels[i]}</td><td class="d">${fmt(x.n, 0)}</td><td class="d">${fmt(x.v, 2)}</td><td class="d">${fmt(x.r, 2)}</td><td class="d out">${fmt(x.cost, 2)}</td><td></td></tr>`
+        );
+        r++;
+      });
+      rows.push(
+        `<tr><td class="b">Total</td><td class="d out">${fmt(cb.rows.reduce((a, x) => a + x.n, 0), 0)}</td><td></td><td></td><td class="d out">${fmt(cb.total, 2)}</td><td></td></tr>`
+      );
+      r += 2;
+      rows.push(`<tr><td></td><td></td><td class="b" colspan="2">5 Year Public Cloud spending</td><td class="d out">${fmt(cb.five, 2)}</td><td></td></tr>`);
+      r++;
+      rows.push(`<tr><td></td><td></td><td class="b" colspan="2">Savings with Private Cloud</td><td class="d out">${fmt(cb.savings, 2)}</td><td></td></tr>`);
+      return rows.join("");
+    }
+
+    html += `<table class="sheet" style="margin-top:10px" aria-label="Cost scenarios"><tbody>`;
+    html += scenarioCost("Planning Scenario: Mostly Gold VMs", 12, state.scenarioA);
+    html += scenarioCost("Planning Scenario: Mostly Silver VMs", 23, state.scenarioB);
+    html += scenarioCost("Planning Scenario: Mostly Bronze VMs", 34, state.scenarioC);
+    html += `<tr><td class="sec" colspan="6">Reference</td></tr>`;
+    html += `<tr><td class="b" colspan="6">For details how we got this number, see https://docs.google.com/spreadsheets/d/1gRXwvZSIhz_C2bEQbrHmQsudqYq47LI0xYcBBwxSXO8/edit?usp=sharing</td></tr>`;
+    html += `</tbody></table>`;
+
+    document.getElementById("tbl-cost").innerHTML = html;
+    ["priceCpuYear", "priceRamYear", "privatePerEsxi"].forEach((k) => {
+      const el = document.querySelector(`#tbl-cost [data-key="${k}"]`);
+      if (el) el.value = state[k];
+    });
+  }
+
+  document.body.addEventListener("input", (e) => {
+    const t = e.target;
+    if (t && t.matches && (t.matches("input[data-key]") || t.matches("input[data-sc]"))) {
+      readStateFromDom();
+      render();
+    }
+  });
+
+  function render() {
+    readStateFromDom();
+    const p = computeProvider();
+    renderProvider(p);
+    renderConsumer(p);
+    renderCost();
+  }
+
+  document.querySelectorAll(".tabs button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tabs button").forEach((b) => b.classList.remove("on"));
+      btn.classList.add("on");
+      const id = btn.dataset.panel;
+      document.querySelectorAll("section.panel").forEach((sec) => {
+        sec.classList.toggle("visible", sec.id === "panel-" + id);
+      });
+    });
+  });
+
+  function seedInputs() {
+    const p = computeProvider();
+    renderProvider(p);
+    renderConsumer(p);
+    renderCost();
+    Object.keys(defaults).forEach((k) => {
+      document.querySelectorAll(`[data-key="${k}"]`).forEach((el) => {
+        if (typeof state[k] === "number") el.value = state[k];
+      });
+    });
+  }
+
+  seedInputs();
+})();
+  </script>
+</body>
+</html>
